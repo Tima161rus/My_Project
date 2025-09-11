@@ -136,11 +136,12 @@ async def delete_product(
 
 @router.get('/{product_id}/reviews/', response_model=list[ReviewShemas])
 async def get_product_reviews(product_id: int, db: Annotated[AsyncSession, Depends(get_async_db)]):
-    tsmt = await db.scalars(select(ProductModel).where(ProductModel.is_active == True,
-                                                 ProductModel.id == product_id))
-    if not tsmt.one_or_none():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail='Product not found')
+    product = await db.scalar(
+    select(ProductModel).where(ProductModel.id == product_id, ProductModel.is_active == True)
+)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
     
     review = await db.scalars(select(ReviewModel).where(ReviewModel.is_active == True,
                                                   ReviewModel.product_id == product_id))
