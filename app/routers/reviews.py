@@ -31,10 +31,12 @@ async def create_reviews(reviews: CreateReview,
     '''
     Создаем новый отзыв, если существует продукт и обновляем средний рейтинг товара
     '''
-    product = await db.scalars(select(ProductModel).where(ProductModel.id == reviews.product_id,
-                                            ProductModel.is_active == True))
+    product = await db.scalar(select(ProductModel).where(
+        ProductModel.id == reviews.product_id,
+        ProductModel.is_active == True
+    ))
 
-    if not product.one_or_none():
+    if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail='Product not found')
 
@@ -42,13 +44,7 @@ async def create_reviews(reviews: CreateReview,
     db.add(db_review)
     await db.commit()
     await db.refresh(db_review)
-    tsmt = await db.scalar(select(func.avg(ReviewModel.grade)).where(ReviewModel.is_active == True,
-                                                 ReviewModel.product_id == reviews.product_id)) # получаем средний рейтинг для продукта
-    
-    avg_grade = round(tsmt,2) if tsmt else None
-    await db.execute(update(ProductModel).where(ProductModel.id == reviews.product_id).
-                         values(rating = avg_grade))
-    await db.commit()
+    await update_product(reviews.product_id, db)
     return db_review
 
 
@@ -58,12 +54,24 @@ async def delete_review(review_id: int, db: Annotated[AsyncSession, Depends(get_
     '''
     Логическое удаление
     '''
-    tsmt = await db.scalars(select(ReviewModel).where(ReviewModel.id == review_id))
-    review = tsmt.one_or_none()
+    review = await db.scalar(select(ReviewModel).where(ReviewModel.id == review_id))
+    
     if not review:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail='Review not found')
+    
     await db.execute(update(ReviewModel).where(ReviewModel.id == review_id).values(is_active = False))
     await db.commit()
     await db.refresh(review)
+    await update_product(review.product_id, db)
     return review
+
+
+async def update_product(id_product: int, db: AsyncSession):
+    
+    tsmt = await db.scalar(select(func.avg(ReviewModel.grade)).where(ReviewModel.is_active == True,
+                                                 ReviewModel.product_id == id_product)) # получаем средний рейтинг для продукта
+    avg_grade = round(tsmt,2) if tsmt else None
+    await db.execute(update(ProductModel).where(ProductModel.id == id_product).
+                         values(rating = avg_grade))
+    await db.commit()
