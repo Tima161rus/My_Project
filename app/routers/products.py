@@ -134,7 +134,7 @@ async def delete_product(
     return product
 
 
-@router.get('{product_id}/reviews/', response_model=list[ReviewShemas])
+@router.get('/{product_id}/reviews/', response_model=list[ReviewShemas])
 async def get_product_reviews(product_id: int, db: Annotated[AsyncSession, Depends(get_async_db)]):
     tsmt = await db.scalars(select(ProductModel).where(ProductModel.is_active == True,
                                                  ProductModel.id == product_id))
