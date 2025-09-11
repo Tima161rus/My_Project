@@ -64,7 +64,7 @@ async def delete_review(review_id: int, db: Annotated[AsyncSession, Depends(get_
     await db.commit()
     await db.refresh(review)
     await update_product(review.product_id, db)
-    return review
+    return {"message": "Review deleted"}
 
 
 async def update_product(id_product: int, db: AsyncSession):
