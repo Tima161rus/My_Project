@@ -8,6 +8,8 @@ if TYPE_CHECKING:
     from app.models import Category
     from app.models.users import User
     from app.models.reviews import Review
+    from app.models.cart import CartItem
+    from app.models.wishlist import WishlistItem
 
 
 
@@ -28,3 +30,5 @@ class Product(Base):
     category: Mapped["Category"] = relationship("Category", back_populates="products")
     seller: Mapped['User'] = relationship("User", back_populates="products")  # New
     reviews: Mapped[list['Review']] = relationship('Review', back_populates='product')
+    cart_items: Mapped[list["CartItem"]] = relationship("CartItem", back_populates="product")
+    wishlist_items: Mapped[list['WishlistItem']] = relationship('WishlistItem', back_populates='product')

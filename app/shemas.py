@@ -1,5 +1,5 @@
 from typing import Optional
-from pydantic import BaseModel, ConfigDict, Field, EmailStr
+from pydantic import BaseModel, ConfigDict, Field, EmailStr, computed_field
 from datetime import datetime
 
 class CategoryCreate(BaseModel):
@@ -86,5 +86,82 @@ class Review(BaseModel):
     comment_date: datetime = Field(...)
     grade: int = Field(...)
     is_active: bool = Field(...)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+
+class CartItemCreate(BaseModel):
+    product_id: int
+    quantity: int
+
+class CategoryShort(BaseModel):
+    name: str
+    model_config = ConfigDict(from_attributes=True)
+
+class ProductOut(BaseModel):
+    id: int
+    name:str
+    price: float
+    category_id: int
+    category: CategoryShort 
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CartItems(BaseModel):
+    id:int 
+    product_id: int
+    quantity: int
+    is_active: bool
+    product: ProductOut
+    @computed_field(return_type=float)
+    def total_price_product(self):
+        return (self.product.price*self.quantity)
+    
+    model_config = ConfigDict(from_attributes=True)
+
+class Cart(BaseModel):
+    id: int = Field(...)
+    user_id: int = Field(...)
+    items : list[CartItems]
+    @computed_field(return_type=int)
+    def total(self):
+        return sum([i.quantity for i in self.items if i.is_active == True])
+       
+    @computed_field(return_type=float)
+    def sum(self):
+        return sum([i.quantity*i.product.price for i in self.items if i.is_active == True])
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProductWish(BaseModel):
+    id: int
+    name:str
+    price: float
+
+    model_config = ConfigDict(from_attributes=True)
+
+class WishlistItem(BaseModel):
+    id: int
+    product_id: int
+    is_active: bool
+    product: ProductWish
+
+    model_config = ConfigDict(from_attributes=True)
+
+class Wishlist(BaseModel):
+    id: int
+    user_id: int
+    items: list[WishlistItem]
+
+    @computed_field(return_type=int)
+    def total_sum(self):
+        return sum(i.product.price for i in self.items if i.is_active == True)
+    
+    @computed_field(return_type=int)
+    def total_count(self):
+        return len([i.product.id for i in self.items if i.is_active == True])
 
     model_config = ConfigDict(from_attributes=True)

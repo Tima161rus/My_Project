@@ -7,6 +7,8 @@ from app.database import Base
 if TYPE_CHECKING:
     from app.models.products import Product
     from app.models.reviews import Review
+    from app.models.cart import Cart
+    from app.models.wishlist import Wishlist
 
 class User(Base):
     __tablename__ = "users"
@@ -19,3 +21,5 @@ class User(Base):
 
     products: Mapped[list["Product"]] = relationship("Product", back_populates="seller")
     reviews : Mapped[list['Review']] = relationship('Review', back_populates='user')
+    cart: Mapped["Cart"] = relationship("Cart", back_populates="user", uselist=False)
+    wishlist: Mapped['Wishlist'] = relationship('Wishlist', back_populates='user')

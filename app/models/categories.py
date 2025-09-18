@@ -18,9 +18,7 @@ class Category(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     products: Mapped[list["Product"]] = relationship("Product", back_populates="category")
-    
     parent: Mapped[Optional["Category"]] = relationship("Category",back_populates="children",remote_side="Category.id")
-
     children: Mapped[list["Category"]] = relationship("Category",back_populates="parent")
     
 
