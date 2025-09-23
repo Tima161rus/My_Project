@@ -165,3 +165,33 @@ class Wishlist(BaseModel):
         return len([i.product.id for i in self.items if i.is_active == True])
 
     model_config = ConfigDict(from_attributes=True)
+
+
+
+class OrderItemOut(BaseModel):
+    id: int
+    product_id: int
+    price: float
+    quantity: int
+    product: ProductOut
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OrderOut(BaseModel):
+    id: int
+    user_id: int
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    total_price: float
+    orderitems: list[OrderItemOut]
+
+    model_config = ConfigDict(from_attributes=True)
+
+class OrderItemCreate(BaseModel):
+    product_id: int
+    quantity: int
+
+class OrderCreate(BaseModel):
+    items: list[OrderItemCreate]

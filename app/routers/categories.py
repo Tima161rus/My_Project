@@ -1,98 +1,61 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, update
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, status
 from typing import Annotated
-
-from app.models.categories import Category as CategoryModel
-from app.shemas import Category as CategorySchema, CategoryCreate
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db_depends import get_async_db
+from app.database.db_depends import get_async_db
+from app.shemas import Category as CategorySchema, CategoryCreate
+from app.services.categories import CategoryService
 
 router = APIRouter(
     prefix="/categorys",
     tags=["Categorys"],
 )
 
+
+def get_category_service(db: AsyncSession = Depends(get_async_db)) -> CategoryService:
+    """Зависимость для получения сервиса категорий"""
+    return CategoryService(db)
+
+
 @router.post("/", response_model=CategorySchema, status_code=status.HTTP_201_CREATED)
-async def create_category(category: CategoryCreate, db: AsyncSession = Depends(get_async_db)):
+async def create_category(
+    category: CategoryCreate,
+    category_service: CategoryService = Depends(get_category_service)
+):
     """
     Создаёт новую категорию.
     """
-    # Проверка существования parent_id, если указан
-    if category.parent_id is not None and category.parent_id > 0:
-        stmt = select(CategoryModel).where(CategoryModel.id == category.parent_id)
-        result = await db.scalars(stmt)
-        parent = result.first()
-        if parent is None:
-            raise HTTPException(status_code=400, detail="Parent category not found")
-
-    # Создание новой категории
-    db_category = CategoryModel(**category.model_dump())
-    db.add(db_category)
-    await db.commit()
-    await db.refresh(db_category)
-    return db_category
+    return await category_service.create_category(category)
 
 
 @router.get("/", response_model=list[CategorySchema])
-async def get_all_categories(db: AsyncSession = Depends(get_async_db)):
+async def get_all_categories(
+    category_service: CategoryService = Depends(get_category_service)
+):
     """
     Возвращает список всех активных категорий.
     """
-    result = await db.scalars(select(CategoryModel).where(CategoryModel.is_active==True))
-    categories = result.all()
-    return categories
+    return await category_service.get_all_categories()
 
 
 @router.delete("/{category_id}", response_model=CategorySchema)
-async def delete_category(category_id: int, db: AsyncSession = Depends(get_async_db)):
+async def delete_category(
+    category_id: int,
+    category_service: CategoryService = Depends(get_category_service)
+):
     """
     Выполняет мягкое удаление категории по её ID, устанавливая is_active = False.
     """
-    stmt = select(CategoryModel).where(CategoryModel.id == category_id)
-    result = await db.scalars(stmt)
-    db_category = result.first()
-    if not db_category:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
-
-    await db.execute(
-        update(CategoryModel)
-        .where(CategoryModel.id == category_id)
-        .values(is_active=False)
-    )
-    await db.commit()
-    return db_category
+    return await category_service.delete_category(category_id)
 
 
 @router.put("/{category_id}", response_model=CategorySchema)
-async def update_category(category_id: int, category: CategoryCreate, db: AsyncSession = Depends(get_async_db)):
+async def update_category(
+    category_id: int,
+    category: CategoryCreate,
+    category_service: CategoryService = Depends(get_category_service)
+):
     """
     Обновляет категорию по её ID.
     """
-    # Проверяем существование категории
-    stmt = select(CategoryModel).where(CategoryModel.id == category_id)
-    result = await db.scalars(stmt)
-    db_category = result.first()
-    if not db_category:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
-
-    # Проверяем parent_id, если указан
-    if category.parent_id is not None:
-        parent_stmt = select(CategoryModel).where(CategoryModel.id == category.parent_id)
-        parent_result = await db.scalars(parent_stmt)
-        parent = parent_result.first()
-        if not parent:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Parent category not found")
-        if parent.id == category_id:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Category cannot be its own parent")
-
-    # Обновляем категорию
-    update_data = category.model_dump(exclude_unset=True)
-    await db.execute(
-        update(CategoryModel)
-        .where(CategoryModel.id == category_id)
-        .values(**update_data)
-    )
-    await db.commit()
-    return db_category
+    return await category_service.update_category(category_id, category)

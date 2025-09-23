@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
-from app.routers import categories, products, users, reviews, cart, wishlist
-
+from app.routers import categories, products, users, reviews, cart, wishlist, order
+from fastapi.middleware.cors import CORSMiddleware
 
 # Создаём приложение FastAPI
 app = FastAPI(
@@ -16,6 +16,7 @@ app.include_router(users.router)
 app.include_router(reviews.router)
 app.include_router(cart.router)
 app.include_router(wishlist.router)
+app.include_router(order.router)
 
 
 # Корневой эндпоинт для проверки

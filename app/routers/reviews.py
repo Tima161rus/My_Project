@@ -1,77 +1,75 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, update, func
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Depends, status
 from typing import Annotated
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db_depends import get_async_db
-
-from app.models.reviews import Review as ReviewModel
-from app.models.products import Product as ProductModel
-from app.shemas import Review as ReviewSchema, CreateReview
-from app.models.users import User as UserModel
+from app.database.db_depends import get_async_db
 from app.auth import get_current_buyer, get_current_admin
+from app.models.users import User as UserModel
+from app.shemas import Review as ReviewSchema, CreateReview
+from app.services.reviews import ReviewService
+
+router = APIRouter(
+    prefix='/reviews',
+    tags=['Reviews'],
+)
 
 
-router = APIRouter(prefix='/reviews', tags=['Reviews'])
+def get_review_service(db: AsyncSession = Depends(get_async_db)) -> ReviewService:
+    """Зависимость для получения сервиса отзывов"""
+    return ReviewService(db)
 
 
 @router.get('/', response_model=list[ReviewSchema], status_code=status.HTTP_200_OK)
-async def get_all_reviews(db: Annotated[AsyncSession, Depends(get_async_db)]):
-    '''
-    Возвращает список всех отзывов
-    '''
-    reviews = await db.scalars(select(ReviewModel).where(ReviewModel.is_active == True))
-    return reviews.all()
+async def get_all_reviews(
+    review_service: ReviewService = Depends(get_review_service)
+):
+    """
+    Возвращает список всех активных отзывов.
+    """
+    return await review_service.get_all_reviews()
 
-@router.post('/', response_model=ReviewSchema,
-             status_code=status.HTTP_201_CREATED)
-async def create_reviews(reviews: CreateReview, 
-                         db: Annotated[AsyncSession, Depends(get_async_db)],
-                         current_user: Annotated[UserModel, Depends(get_current_buyer)]):
-    '''
-    Создаем новый отзыв, если существует продукт и обновляем средний рейтинг товара
-    '''
-    product = await db.scalar(select(ProductModel).where(
-        ProductModel.id == reviews.product_id,
-        ProductModel.is_active == True
-    ))
 
-    if not product:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail='Product not found')
-
-    db_review = ReviewModel(**reviews.model_dump(),  user_id=current_user.id)
-    db.add(db_review)
-    await db.commit()
-    await db.refresh(db_review)
-    await update_product(reviews.product_id, db)
-    return db_review
+@router.post('/', response_model=ReviewSchema, status_code=status.HTTP_201_CREATED)
+async def create_review(
+    review: CreateReview,
+    current_user: Annotated[UserModel, Depends(get_current_buyer)],
+    review_service: ReviewService = Depends(get_review_service)
+):
+    """
+    Создаёт новый отзыв для продукта.
+    """
+    return await review_service.create_review(review, current_user)
 
 
 @router.delete('/{review_id}', status_code=status.HTTP_200_OK)
-async def delete_review(review_id: int, db: Annotated[AsyncSession, Depends(get_async_db)], 
-                        current_user: Annotated[UserModel, Depends(get_current_admin)]):
-    '''
-    Логическое удаление
-    '''
-    review = await db.scalar(select(ReviewModel).where(ReviewModel.id == review_id))
-    
-    if not review:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail='Review not found')
-    
-    await db.execute(update(ReviewModel).where(ReviewModel.id == review_id).values(is_active = False))
-    await db.commit()
-    await db.refresh(review)
-    await update_product(review.product_id, db)
-    return {"message": "Review deleted"}
+async def delete_review(
+    review_id: int,
+    current_user: Annotated[UserModel, Depends(get_current_admin)],
+    review_service: ReviewService = Depends(get_review_service)
+):
+    """
+    Удаляет отзыв (только для администраторов).
+    """
+    return await review_service.delete_review(review_id)
 
 
-async def update_product(id_product: int, db: AsyncSession):
-    
-    tsmt = await db.scalar(select(func.avg(ReviewModel.grade)).where(ReviewModel.is_active == True,
-                                                 ReviewModel.product_id == id_product)) # получаем средний рейтинг для продукта
-    avg_grade = round(tsmt,2) if tsmt else None
-    await db.execute(update(ProductModel).where(ProductModel.id == id_product).
-                         values(rating = avg_grade))
-    await db.commit()
+@router.get('/product/{product_id}', response_model=list[ReviewSchema])
+async def get_product_reviews(
+    product_id: int,
+    review_service: ReviewService = Depends(get_review_service)
+):
+    """
+    Возвращает все активные отзывы для указанного продукта.
+    """
+    return await review_service.get_product_reviews(product_id)
+
+
+@router.get('/user/{user_id}', response_model=list[ReviewSchema])
+async def get_user_reviews(
+    user_id: int,
+    review_service: ReviewService = Depends(get_review_service)
+):
+    """
+    Возвращает все отзывы указанного пользователя.
+    """
+    return await review_service.get_user_reviews(user_id)

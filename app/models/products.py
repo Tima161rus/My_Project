@@ -3,13 +3,14 @@ from sqlalchemy import String, Boolean, Float, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import ForeignKey  
 
-from app.database import Base
+from app.database.database import Base
 if TYPE_CHECKING:
     from app.models import Category
     from app.models.users import User
     from app.models.reviews import Review
     from app.models.cart import CartItem
     from app.models.wishlist import WishlistItem
+    from app.models.orders import OrderItem
 
 
 
@@ -32,3 +33,4 @@ class Product(Base):
     reviews: Mapped[list['Review']] = relationship('Review', back_populates='product')
     cart_items: Mapped[list["CartItem"]] = relationship("CartItem", back_populates="product")
     wishlist_items: Mapped[list['WishlistItem']] = relationship('WishlistItem', back_populates='product')
+    orderitems: Mapped[list['OrderItem']] = relationship("OrderItem", back_populates='product')

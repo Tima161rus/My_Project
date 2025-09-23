@@ -1,223 +1,106 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, update, insert
-from sqlalchemy.orm import Session, selectinload, with_loader_criteria
+from fastapi import APIRouter, Depends, status
 from typing import Annotated
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.cart import CartItem as CartItemModel, Cart as CartModel
-from app.models.products import Product
-from app.models.categories import Category
+from app.database.db_depends import get_async_db
+from app.auth import get_current_buyer
 from app.models.users import User as UserModel
 from app.shemas import Cart, CartItems, CartItemCreate
-
-from app.db_depends import get_async_db
-from app.auth import get_current_buyer
+from app.services.cart import CartService
 
 router = APIRouter(
     prefix="/carts",
     tags=["Carts"],
 )
 
+
+def get_cart_service(db: AsyncSession = Depends(get_async_db)) -> CartService:
+    """Зависимость для получения сервиса корзины"""
+    return CartService(db)
+
+
 @router.get('/', response_model=Cart)
 async def get_user_cart(
     user: Annotated[UserModel, Depends(get_current_buyer)],
-    db: Annotated[AsyncSession, Depends(get_async_db)]
+    cart_service: CartService = Depends(get_cart_service)
 ):
-    '''
+    """
     Просмотр всех активных товаров в корзине
-    '''
-    cart_model = await db.scalar(
-        select(CartModel)
-        .options(selectinload(CartModel.items).
-                 selectinload(CartItemModel.product).
-                 selectinload(Product.category),
-                 with_loader_criteria(CartItemModel, CartItemModel.is_active == True),
-                 with_loader_criteria(Product, Product.is_active == True),
-                 with_loader_criteria(Category, Category.is_active == True))
-        .where(CartModel.user_id == user.id)
-    )
+    """
+    cart = await cart_service.get_user_cart(user)
+    return Cart.model_validate(cart)
 
-    if not cart_model:
-        cart_model = await create_cart(user, db)
-
-    return cart_model
 
 @router.get('/summary')
 async def get_cart_summary(
-    db: Annotated[AsyncSession, Depends(get_async_db)],
-    user: Annotated[UserModel, Depends(get_current_buyer)]
+    user: Annotated[UserModel, Depends(get_current_buyer)],
+    cart_service: CartService = Depends(get_cart_service)
 ):
-    cart = await db.scalar(
-        select(CartModel)
-        .options(selectinload(CartModel.items).selectinload(CartItemModel.product))
-        .where(CartModel.user_id == user.id)
-    )
-    if not cart:
-        raise HTTPException(status_code=404, detail="Корзина не найдена")
-    total_items = sum(item.quantity for item in cart.items if item.is_active)
-    total_price = sum(item.product.price * item.quantity for item in cart.items if item.is_active)
-
-    return {
-        "total_items": total_items,
-        "total_price": total_price,
-        "currency": "RUB"
-    }
-
+    """
+    Получение сводки по корзине
+    """
+    cart = await cart_service.get_cart_summary(user)
+    return cart
 
 
 @router.get('/view_del_CartItem', response_model=Cart)
 async def get_user_cart_del(
     user: Annotated[UserModel, Depends(get_current_buyer)],
-    db: Annotated[AsyncSession, Depends(get_async_db)]
+    cart_service: CartService = Depends(get_cart_service)
 ):
-    '''
-    Просмотр удаленых товаров из корзины
-    '''
-    cart_model = await db.scalar(
-        select(CartModel)
-        .options(selectinload(CartModel.items).
-                 selectinload(CartItemModel.product).
-                 selectinload(Product.category),
-                 with_loader_criteria(CartItemModel, CartItemModel.is_active == False),
-                 with_loader_criteria(Product, Product.is_active == True),
-                 with_loader_criteria(Category, Category.is_active == True))
-        .where(CartModel.user_id == user.id)
-    )
+    """
+    Просмотр удаленных товаров из корзины
+    """
+    cart = await cart_service.get_user_cart(user, include_inactive=True)
+    return Cart.model_validate(cart)
 
-    if not cart_model:
-        cart_model = await create_cart(user, db)
-
-    return cart_model
 
 @router.post('/items', response_model=CartItems)
-async def add_itens_cart(
+async def add_items_cart(
     user: Annotated[UserModel, Depends(get_current_buyer)],
     items: CartItemCreate,
-    db: Annotated[AsyncSession, Depends(get_async_db)]
+    cart_service: CartService = Depends(get_cart_service)
 ):
-    '''
+    """
     Добавление товаров в корзину
-    '''
-    cart = await db.scalar(select(CartModel).where(CartModel.user_id == user.id))
-    if not cart:
-        cart = await create_cart(user, db)
-
-    cart_item = await db.scalar(
-        select(CartItemModel)
-        .where(
-            CartItemModel.cart_id == cart.id,
-            CartItemModel.product_id == items.product_id
-        )
-    )
-    if cart_item:
-        cart_item.quantity += items.quantity
-    else:
-        cart_item = CartItemModel(**items.model_dump(), cart_id = cart.id)
-        db.add(cart_item)
-
-    await db.commit()
-    await db.refresh(cart_item)
-
-    # Подгружаем продукт
-    result = await db.execute(
-        select(CartItemModel)
-        .options(selectinload(CartItemModel.product))
-        .where(CartItemModel.id == cart_item.id)
-    )
-    cart_item = result.scalar_one()
-
-    return cart_item
+    """
+    cart = await cart_service.add_item_to_cart(user, items)
+    return Cart.model_validate(cart)
 
 
-@router.delete('/items/{id}')
-async def del_CartItem(db: Annotated[AsyncSession, Depends(get_async_db)],
-                       user: Annotated[AsyncSession, Depends(get_current_buyer)],
-                       id: int):
-    '''
+@router.delete('/items/{item_id}')
+async def del_cart_item(
+    item_id: int,
+    user: Annotated[UserModel, Depends(get_current_buyer)],
+    cart_service: CartService = Depends(get_cart_service)
+):
+    """
     Логическое удаление товаров из корзины
-    '''
-    cartItem = await chek_cart(db, user, id)
-    cartItem.is_active = False
-    await db.commit()
-    await db.refresh(cartItem)
-    return cartItem
+    """
+    return await cart_service.remove_item(user, item_id)
+
 
 @router.delete('/all_items')
-async def del_all_CartItem(db: Annotated[AsyncSession, Depends(get_async_db)],
-                       user: Annotated[AsyncSession, Depends(get_current_buyer)]):
-    '''
+async def del_all_cart_item(
+    user: Annotated[UserModel, Depends(get_current_buyer)],
+    cart_service: CartService = Depends(get_cart_service)
+):
+    """
     Очистить корзину
-    '''
-    cart = await db.scalar(select(CartModel).
-                           where(CartModel.user_id == user.id))
-
-    await db.execute(
-        update(CartItemModel)
-        .where(CartItemModel.cart_id == cart.id)
-        .values(is_active=False))
-
-    await db.commit()
-    return {user.id: 'Корзина очищена'}
-
-@router.patch('/items/{id}', response_model=Cart)
-async def up_quantity_product(
-                            db: Annotated[AsyncSession, Depends(get_async_db)],
-                            user: Annotated[AsyncSession, Depends(get_current_buyer)],
-                            id: int,
-                            count: int):
-    '''
-    Добавить или уменьшить количство товаров
-    '''
-    cartItem = await chek_cart(user, db, id)
-    cartItem.quantity += count
-    if cartItem.quantity < 0:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail={'Количество не может быть меньше нуля': cartItem.quantity})
-    
-    await db.commit()
-    await db.refresh(cartItem)
-
-    cart_model = await db.scalar(
-        select(CartModel)
-        .options(selectinload(CartModel.items).
-                 selectinload(CartItemModel.product).
-                 selectinload(Product.category),
-                 with_loader_criteria(CartItemModel, CartItemModel.is_active == True),
-                 with_loader_criteria(Product, Product.is_active == True),
-                 with_loader_criteria(Category, Category.is_active == True))
-        .where(CartModel.user_id == user.id)
-    )
-
-    return cart_model
+    """
+    cart = await cart_service.clear_cart(user)
+    return Cart.model_validate(cart)
 
 
-
-async def chek_cart(user: UserModel, db: AsyncSession, id:int):
-    '''
-    Проверка наличия козины и товара в ней
-    '''
-    cart = await db.scalar(select(CartModel).
-                           where(CartModel.user_id == user.id))
-    if not cart:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail='Carts not found')
-    
-    cartItem = await db.scalar(select(CartItemModel).where(CartItemModel.cart_id == cart.id, 
-                                                           CartItemModel.id == id,
-                                                           CartItemModel.is_active == True))
-    if not cartItem:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail= 'CartItem not found')
-    return cartItem
-
-async def create_cart(user: UserModel, db: AsyncSession):
-    '''
-    Создание корзины
-    '''
-    cart = await db.scalar(select(CartModel).where(CartModel.user_id == user.id))
-    if not cart:
-        cart = CartModel(user_id=user.id)
-        db.add(cart)
-        await db.commit()
-        await db.refresh(cart)
-    return cart
+@router.patch('/items/{item_id}', response_model=Cart)
+async def update_quantity_product(
+    item_id: int,
+    count: int,
+    user: Annotated[UserModel, Depends(get_current_buyer)],
+    cart_service: CartService = Depends(get_cart_service)
+):
+    """
+    Добавить или уменьшить количество товаров
+    """
+    cart = await cart_service.update_item_quantity(user, item_id, count)
+    return Cart.model_validate(cart)

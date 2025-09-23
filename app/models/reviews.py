@@ -2,7 +2,7 @@ from sqlalchemy import Integer, String, Text, BOOLEAN, ForeignKey
 from sqlalchemy.orm import relationship, mapped_column, Mapped
 from typing import TYPE_CHECKING
 from datetime import datetime, timezone
-from app.database import Base
+from app.database.database import Base
 if TYPE_CHECKING:
 
     from app.models.users import User
