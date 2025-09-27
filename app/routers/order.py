@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_buyer
 from app.services.order import OrderServics
-from app.shemas import OrderOut
+from app.shemas import OrderOut, OrderCreate, OrderItemOut
 from app.database.db_depends import get_async_db
 from app.shemas import User
 
@@ -37,45 +37,24 @@ async def get_order_id(
     order_servics: Annotated[OrderServics, Depends(get_order_service)],
     user: Annotated[User, Depends(get_current_buyer)],
 ):
+    '''
+    Вернуть конкретный товар из заказа
+    '''
     order = await order_servics.get_id(user, order_id)
     return OrderOut.model_validate(order)
 
 
-# @router.post("/", response_model=OrderOut, status_code=status.HTTP_201_CREATED)
-# async def create_new_order(
-#     db: Annotated[AsyncSession, Depends(get_async_db)],
-#     user: Annotated[UserModel, Depends(get_current_buyer)],
-# ):
-#     return await create_order(db, user)
 
+@router.post("/", response_model=OrderOut, status_code=status.HTTP_201_CREATED)
+async def checkout_order(
+    
+    order_servics: Annotated[OrderServics, Depends(get_order_service)],
+    user: Annotated[User, Depends(get_current_buyer)],
+):
+    '''
+    Создать заказ
+    '''
+    db_order = await order_servics.checkout_order(user)
+    return OrderOut.model_validate(db_order)
 
-# async def get_orders(db: AsyncSession, user: UserModel):
-#     result = await db.scalars(
-#         select(Order)
-#         .options(
-#             selectinload(Order.orderitems).selectinload(OrderItem.product),
-#             with_loader_criteria(Product, Product.is_active == True),
-#         )
-#         .where(Order.user_id == user.id)
-#     )
-#     return result.all()
-
-
-# async def get_order(db: AsyncSession, user: UserModel, order_id: int):
-#     return await db.scalar(
-#         select(Order)
-#         .options(
-#             selectinload(Order.orderitems).selectinload(OrderItem.product),
-#             with_loader_criteria(Product, Product.is_active == True),
-#         )
-#         .where(Order.user_id == user.id, Order.id == order_id)
-#     )
-
-
-# async def create_order(db: AsyncSession, user: UserModel):
-#     order = Order(user_id=user.id)
-#     db.add(order)
-#     await db.commit()
-#     await db.refresh(order)
-#     return order
 

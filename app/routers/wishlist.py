@@ -52,7 +52,7 @@ async def add_product_to_wishlist(
     Добавить товар в вишлист
     """
     wislist = await wishlist_service.add_product_to_wishlist(user, product_id)
-    return Wishlist.model_validate(wislist)
+    return WishlistItem.model_validate(wislist)
 
 
 @router.delete('/{wishlist_item_id}', response_model=WishlistItem)
@@ -65,7 +65,7 @@ async def remove_product_from_wishlist(
     Удалить товар из вишлиста
     """
     wishlist = await wishlist_service.remove_product_from_wishlist(user, wishlist_item_id)
-    return Wishlist.model_validate(wishlist)
+    return wishlist
 
 
 @router.delete('/')

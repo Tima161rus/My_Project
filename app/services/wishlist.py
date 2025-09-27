@@ -45,33 +45,36 @@ class WishlistService:
         return len(wishlist.items)
 
     async def add_product_to_wishlist(self, user: UserModel, product_id: int) -> WishlistItemModel:
-        """
-        Добавление товара в вишлист
-        """
         wishlist = await self.get_or_create_wishlist(user)
-        
-        # Проверяем, есть ли уже товар в вишлисте
+
+        # проверяем существующий активный элемент
         existing_item = await self.db.scalar(
             select(WishlistItemModel)
+            .options(selectinload(WishlistItemModel.product))  # <-- ORM-модель!
             .where(
                 WishlistItemModel.is_active == True,
                 WishlistItemModel.wishlist_id == wishlist.id,
                 WishlistItemModel.product_id == product_id
             )
         )
-        
         if existing_item:
             return existing_item
 
-        # Создаем новую запись
+        # создаём новый
         wishlist_item = WishlistItemModel(
             wishlist_id=wishlist.id,
             product_id=product_id
         )
         self.db.add(wishlist_item)
         await self.db.commit()
-        await self.db.refresh(wishlist_item)
-        return wishlist_item
+
+        # перечитываем с подгруженным продуктом
+        stmt = (
+            select(WishlistItemModel)
+            .options(selectinload(WishlistItemModel.product))
+            .where(WishlistItemModel.id == wishlist_item.id)
+        )
+        return (await self.db.scalars(stmt)).one()
 
     async def remove_product_from_wishlist(self, user: UserModel, wishlist_item_id: int) -> WishlistItemModel:
         """
@@ -96,7 +99,8 @@ class WishlistService:
         
         wishlist_item.is_active = False
         await self.db.commit()
-        return wishlist_item
+        return {"status": "ok", "message": "Wishlist cleared successfully"}
+
 
     async def clear_wishlist(self, user: UserModel) -> dict:
         """
@@ -133,4 +137,14 @@ class WishlistService:
         """
         Получение вишлиста с активными товарами
         """
-        return await self.get_or_create_wishlist(user)
+        wishlist = await self.db.scalar(
+        select(WishlistModel)
+        .options(
+            selectinload(WishlistModel.items).selectinload(WishlistItemModel.product),
+            with_loader_criteria(WishlistItemModel, WishlistItemModel.is_active == True)
+        )
+        .where(WishlistModel.user_id == user.id)
+    )
+        if not wishlist:
+            wishlist = await self.get_or_create_wishlist(user)
+        return wishlist

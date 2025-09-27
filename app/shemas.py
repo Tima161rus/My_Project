@@ -1,5 +1,5 @@
 from typing import Optional
-from pydantic import BaseModel, ConfigDict, Field, EmailStr, computed_field
+from pydantic import BaseModel, ConfigDict, Field, EmailStr, computed_field, AliasChoices
 from datetime import datetime
 
 class CategoryCreate(BaseModel):
@@ -156,13 +156,13 @@ class Wishlist(BaseModel):
     user_id: int
     items: list[WishlistItem]
 
-    @computed_field(return_type=int)
+    @computed_field(return_type=float)
     def total_sum(self):
-        return sum(i.product.price for i in self.items if i.is_active == True)
+        return sum(i.product.price for i in self.items if i.is_active)
     
     @computed_field(return_type=int)
     def total_count(self):
-        return len([i.product.id for i in self.items if i.is_active == True])
+        return len([i.product.id for i in self.items if i.is_active])
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -171,9 +171,9 @@ class Wishlist(BaseModel):
 class OrderItemOut(BaseModel):
     id: int
     product_id: int
-    price: float
-    quantity: int
-    product: ProductOut
+    #price: float
+    #quantity: int
+    product: ProductWish
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -194,4 +194,9 @@ class OrderItemCreate(BaseModel):
     quantity: int
 
 class OrderCreate(BaseModel):
-    items: list[OrderItemCreate]
+    # принимать и "items", и "orderitems", но в OpenAPI и ответах будет "items"
+    orderitems: list[OrderItemCreate] = Field(
+        validation_alias=AliasChoices("items", "orderitems"),
+        serialization_alias="items",
+        min_length=1,
+    )

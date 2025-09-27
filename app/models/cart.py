@@ -13,6 +13,7 @@ class Cart(Base):
     __tablename__ = 'carts'
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey('users.id'), unique=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     user: Mapped['User'] = relationship('User', back_populates='cart')
     items: Mapped[list["CartItem"]] = relationship("CartItem", back_populates="cart")

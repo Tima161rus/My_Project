@@ -7,8 +7,8 @@ from app.shemas import Category as CategorySchema, CategoryCreate
 from app.services.categories import CategoryService
 
 router = APIRouter(
-    prefix="/categorys",
-    tags=["Categorys"],
+    prefix="/categories",
+    tags=["Categories"],
 )
 
 
